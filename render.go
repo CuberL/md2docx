@@ -5,7 +5,11 @@ import (
 	"fmt"
 	"strings"
 
+	"baliance.com/gooxml/common"
 	"baliance.com/gooxml/document"
+	"baliance.com/gooxml/measurement"
+	//	"baliance.com/gooxml/schema/soo/ofc/sharedTypes"
+	"baliance.com/gooxml/schema/soo/wml"
 	bf "gopkg.in/russross/blackfriday.v2"
 )
 
@@ -15,6 +19,7 @@ type DocxRenderer struct {
 	inHeading     bool
 	inParagraph   bool
 	inCode        bool
+	inItem        bool
 	para          document.Paragraph
 	headingLevel  int
 	headingText   string
@@ -45,9 +50,11 @@ func (d *DocxRenderer) RenderNode(node *bf.Node, entering bool) bf.WalkStatus {
 			d.para.AddRun().AddText(string(node.Literal))
 		} else if d.inParagraph {
 			d.para.AddRun().AddText(string(node.Literal))
+		} else if d.inItem {
+			d.para.AddRun().AddText(string(node.Literal))
 		}
 	case bf.Paragraph:
-		if entering {
+		if entering && !d.inItem {
 			d.inParagraph = true
 			d.para = d.doc.AddParagraph()
 			d.para.SetStyle("It")
@@ -61,13 +68,54 @@ func (d *DocxRenderer) RenderNode(node *bf.Node, entering bool) bf.WalkStatus {
 			para.SetStyle("Code")
 			para.AddRun().AddText(line)
 		}
+	case bf.Item:
+		if entering {
+			d.inItem = true
+			d.para = d.doc.AddParagraph()
+			d.para.SetStyle("Item")
+		} else {
+			d.inItem = false
+		}
+	case bf.Image:
+		if entering {
+			dest := string(node.LinkData.Destination)
+			fmt.Println(dest)
+			img, err := common.ImageFromFile(dest)
+			if err != nil {
+				fmt.Println(err)
+				break
+			}
+			iref, err := d.doc.AddImage(img)
+			if err != nil {
+				fmt.Println(err)
+				break
+			}
+			para := d.doc.AddParagraph()
+			run := para.AddRun()
+			anchored, err := run.AddDrawingInline(iref)
+			if err != nil {
+				fmt.Println(err)
+			}
+			para.Properties().SetAlignment(wml.ST_JcCenter)
+			//			run.Properties().SetVerticalAlignment(sharedTypes.ST_VerticalAlignRunSubscript)
+			anchored.SetSize(iref.RelativeWidth(3*measurement.Inch), 3*measurement.Inch)
+			//			anchored.SetName(string(node.LinkData.Title))
+			//			anchored.SetHAlignment(wml.WdST_AlignHCenter)
+			//			anchored.SetYOffset(3 * measurement.Inch)
+			//			anchored.SetTextWrapSquare(wml.WdST_WrapTextLeft)
+			//			anchored.SetSize(iref.RelativeWidth(3*measurement.Inch), 3*measurement.Inch)
+		}
 	}
 	return bf.GoToNext
 }
 
 func (d *DocxRenderer) Render(ast *bf.Node) []byte {
+	d.inCode = false
+	d.inHeading = false
+	d.inItem = false
+	d.inParagraph = false
+
 	ast.Walk(func(node *bf.Node, entering bool) bf.WalkStatus {
-		fmt.Println(node.Type)
 		return d.RenderNode(node, entering)
 	})
 	return d.w.Bytes()

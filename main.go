@@ -18,10 +18,10 @@ func main() {
 	}
 	input, err := ioutil.ReadAll(mdf)
 
-	input = []byte(`
-- ListItem1
-- ListItem2
-`)
+	//	input = []byte(`
+	//- ListItem1
+	//- ListItem2
+	//`)
 	doc, err := document.OpenTemplate("/home/cuberl/backup2.docx")
 	if err != nil {
 		fmt.Println(err)
